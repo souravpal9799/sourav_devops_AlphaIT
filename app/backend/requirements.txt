@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+aiomysql
+boto3
