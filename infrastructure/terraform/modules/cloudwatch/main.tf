@@ -14,7 +14,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           ]
           period = 300
           stat   = "Average"
-          region = "us-east-1"
+          region = "ap-south-1"
           title  = "EKS Failed Node Count"
         }
       },
@@ -30,7 +30,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           ]
           period = 300
           stat   = "Average"
-          region = "us-east-1"
+          region = "ap-south-1"
           title  = "RDS CPU Utilization"
         }
       }

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
-  namespace: mvp-namespace
+  namespace: demo-namespace
 spec:
   replicas: 2
   selector:
@@ -23,14 +23,14 @@ spec:
             - name: BUILD_VERSION
               value: "1.0.0"
             - name: AWS_REGION
-              value: "us-east-1"
+              value: "ap-south-1"
             - name: DB_HOST
               valueFrom:
                 secretKeyRef:
                   name: db-credentials
                   key: DB_HOST
             - name: DB_NAME
-              value: "mvp_db"
+              value: "demo_db"
           livenessProbe:
             httpGet:
               path: /health

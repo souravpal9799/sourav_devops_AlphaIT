@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'DevOps MVP',
+  title: 'DevOps demo',
   description: 'Full Stack App',
 }
 

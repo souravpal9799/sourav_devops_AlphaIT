@@ -1,11 +1,11 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    AWS_REGION: str = "us-east-1"
+    AWS_REGION: str = "ap-south-1"
     SECRET_NAME: str = "rds-db-credentials"
     DB_HOST: str = ""
     DB_PORT: int = 3306
-    DB_NAME: str = "mvp_db"
+    DB_NAME: str = "demo_db"
 
     class Config:
         env_file = ".env"

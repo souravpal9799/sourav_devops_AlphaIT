@@ -25,7 +25,7 @@ export default function Home() {
 
   return (
     <main style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
-      <h1>AWS DevOps MVP Project</h1>
+      <h1>AWS DevOps demo Project</h1>
       <div style={{ padding: '2rem', border: '1px solid #eaeaea', borderRadius: '8px', marginTop: '2rem' }}>
         <h2>Backend Status</h2>
         {loading && <p>Loading data from backend...</p>}

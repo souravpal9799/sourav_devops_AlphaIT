@@ -4,7 +4,7 @@ from .database import engine, Base, get_db, Message, init_db
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-app = FastAPI(title="MVP API")
+app = FastAPI(title="demo API")
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,7 +1,7 @@
 module "vpc" {
   source       = "./modules/vpc"
   project_name = var.project_name
-  cidr_block   = "10.0.0.0/16"
+  cidr_block   = "10.1.0.0/16"
 }
 
 module "security_group" {
@@ -34,7 +34,7 @@ module "irsa" {
   project_name                 = var.project_name
   oidc_provider_arn            = module.eks.oidc_provider_arn
   oidc_provider_url            = module.eks.oidc_provider_url
-  namespace                    = "mvp-namespace"
+  namespace                    = "demo-devops"
   service_account_name         = "backend-sa"
   secrets_manager_secret_arn   = module.rds.secret_arn
 }

@@ -7,10 +7,10 @@ on:
     branches: [ main ]
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-south-1
   ECR_FRONTEND: frontend-app
   ECR_BACKEND: backend-app
-  EKS_CLUSTER: mvp-cluster
+  EKS_CLUSTER: demo-cluster
 
 jobs:
   lint-and-build:
@@ -116,10 +116,10 @@ jobs:
           kubectl apply -f infrastructure/kubernetes/ingress.yaml
           kubectl apply -f infrastructure/kubernetes/backend-hpa.yaml
           
-          kubectl rollout status deployment/backend -n mvp-namespace
-          kubectl rollout status deployment/frontend -n mvp-namespace
+          kubectl rollout status deployment/backend -n demo-namespace
+          kubectl rollout status deployment/frontend -n demo-namespace
 
       - name: Smoke Test
         run: |
-          ALB_URL=$(kubectl get ingress -n mvp-namespace mvp-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          ALB_URL=$(kubectl get ingress -n demo-namespace demo-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
           curl -f http://$ALB_URL/api/health || exit 1
