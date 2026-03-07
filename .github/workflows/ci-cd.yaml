@@ -53,6 +53,9 @@ jobs:
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
 
+      - name: Wait for Trivy DB Cache
+        run: sleep 15
+
       - name: Trivy Scan Backend
         uses: aquasecurity/trivy-action@master
         with:
@@ -106,8 +109,8 @@ jobs:
           IMAGE_TAG: v1.0.${{ github.run_number }}
         run: |
           # Replace image tags in deployments
-          sed -i "s|<FRONTEND_IMAGE>|$ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG|g" infrastructure/kubernetes/frontend-deployment.yaml
-          sed -i "s|<BACKEND_IMAGE>|$ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG|g" infrastructure/kubernetes/backend-deployment.yaml
+          sed -i "s|<FRONTEND_IMAGE>|$ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG|g" infra/kubernetes/frontend-deployment.yaml
+          sed -i "s|<BACKEND_IMAGE>|$ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG|g" infra/kubernetes/backend-deployment.yaml
           
           kubectl apply -f infra/kubernetes/ -R
           
