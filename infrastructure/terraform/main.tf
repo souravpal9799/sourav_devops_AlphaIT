@@ -20,7 +20,7 @@ module "eks" {
 module "rds" {
   source             = "./modules/rds"
   project_name       = var.project_name
-  subnet_ids         = module.vpc.private_subnet_ids
+  subnet_ids         = module.vpc.public_subnet_ids
   security_group_ids = [module.security_group.rds_sg_id]
 }
 

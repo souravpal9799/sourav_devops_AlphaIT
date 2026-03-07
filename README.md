@@ -1,86 +1,78 @@
-# Full-Stack Python App (Flask + FastAPI + MySQL)
+# AWS DevOps EKS Solution (Demo_devops)
 
-A sample full-stack application with a **Flask** frontend and **FastAPI** backend, ready for Docker and Kubernetes deployment.
+A production-ready DevOps MVP project on AWS. This repository provisions infrastructure via Terraform and deploys a full-stack application to Amazon EKS using a complete CI/CD pipeline.
 
-## Architecture
+## System Architecture
 
-| Component | Tech | Port | Description |
-|-----------|------|------|-------------|
-| **Frontend** | Flask + Jinja2 | 5000 | Displays backend health, readiness, and Docker image version |
-| **Backend** | FastAPI | 8000 | Health/readiness endpoints, connects to MySQL |
-| **MySQL** | MySQL 8 | 3306 | Database (RDS or in-cluster) |
+- **AWS Region:** `ap-south-1`
+- **Infrastructure as Code:** Terraform (VPC, Security Groups, EKS, RDS, ECR, IRSA, CloudWatch Dashboard)
+- **Container Orchestration:** Amazon EKS
+- **Database:** Amazon RDS for MySQL (`demo_db`)
+- **Container Registry:** Amazon ECR (`frontend-app`, `backend-app`)
+- **Security & IAM:** AWS Secrets Manager for DB credentials, IAM Roles for Service Accounts (IRSA) for pod-level AWS API access.
+- **Ingress / Load Balancing:** AWS ALB Ingress Controller routing traffic to our microservices.
+- **CI/CD:** GitHub Actions (linting, docker builds, Trivy vulnerability scanning, ECR pushing, EKS deployment).
+- **Monitoring:** CloudWatch metrics dashboard for EKS nodes and RDS CPU utilization.
 
-## Quick Start (Docker Compose)
+## Application Stack
 
+1. **Backend:** Python FastAPI
+   - Connects to RDS using credentials retrieved at runtime from AWS Secrets Manager.
+   - Provides `/health`, `/ready`, and `/message` endpoints.
+   - Automatically initializes the database schema and a seed row upon startup.
+2. **Frontend:** React / Next.js
+   - Calls the FastAPI backend asynchronously to retrieve dynamic DB payload data.
+   - Displays real-time API connectivity and build version details.
+
+## Changes & Current Configuration
+
+- **Project Namespace:** `demo-namespace`
+- **Kubernetes Services:** Consolidated into a unified `infrastructure/kubernetes/service.yaml`.
+- **Database:** Uses `demo_db` hosted on AWS RDS.
+- **Region:** Configured globally for `ap-south-1`.
+
+## Local Setup & Deployment
+
+### 1. Terraform Infrastructure Provisioning
+
+Navigate to the terraform directory:
 ```bash
-# Copy env example
-cp .env.example .env
-
-# Start all services
-docker compose up -d
-
-# Frontend UI
-open http://localhost:5000
-
-# Backend API docs
-open http://localhost:8000/docs
+cd infrastructure/terraform
+terraform init
+terraform plan
+terraform apply --auto-approve
 ```
+*Wait for EKS, RDS, and ECR to be provisioned.*
 
-## Project Structure
+### 2. Kubernetes Configuration
 
-```
-project-root/
-├── app/
-│   ├── frontend/
-│   │   ├── app.py              # Flask app
-│   │   ├── templates/
-│   │   │   └── index.html      # Jinja2 template
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
-│   └── backend/
-│       ├── main.py             # FastAPI app
-│       ├── db.py               # MySQL connection pool
-│       ├── requirements.txt
-│       └── Dockerfile
-├── k8s/
-│   └── manifest/               # Kubernetes manifests
-├── docker-compose.yml
-├── .env.example
-└── README.md
-```
-
-## Environment Variables
-
-| Variable | Used By | Description |
-|----------|---------|-------------|
-| `DB_HOST` | Backend | MySQL host (e.g. RDS endpoint or `mysql` for in-cluster) |
-| `DB_PORT` | Backend | MySQL port (default: 3306) |
-| `DB_USER` | Backend | MySQL user |
-| `DB_PASSWORD` | Backend | MySQL password |
-| `DB_NAME` | Backend | Database name |
-| `BACKEND_URL` | Frontend | Backend API URL (e.g. `http://backend:80` in K8s) |
-| `DOCKER_IMAGE_VERSION` | Frontend | Version shown in UI (e.g. `v1.0.0`) |
-
-## API Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /health` | Basic health check → `{"status": "ok"}` |
-| `GET /ready` | Readiness check (tests MySQL) → `{"status": "ready", "database": "connected"}` or `{"status": "not_ready", "database": "unreachable"}` |
-| `GET /docs` | OpenAPI documentation |
-
-## Kubernetes Deployment
-
-See [k8s/README.md](k8s/README.md) for:
-
-- Deploying backend, frontend, and optional in-cluster MySQL
-- AWS RDS configuration
-- Argo CD (GitOps) setup
-- Ingress and path-based routing
-
-## Build Images Locally
-
+After Terraform finishes, update your local `kubeconfig`:
 ```bash
-docker build -t backend:latest ./app/backend
-docker build -t frontend:latest --build-arg DOCKER_IMAGE_VERSION=v1.0.0 ./app/frontend
+aws eks update-kubeconfig --name demo-cluster --region ap-south-1
 ```
+
+### 3. Application Deployment via GitHub Actions
+
+The provided CI/CD pipeline (`.github/workflows/ci-cd.yaml`) automates the deployment when code is pushed to the `main` branch. 
+
+To run properly, ensure the following GitHub Repository Secrets are set:
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+
+The pipeline will:
+1. Lint the Python and TypeScript code.
+2. Build and push Docker images to Amazon ECR.
+3. Run Trivy vulnerability scans.
+4. Replace placeholder image tags in the Kubernetes manifests.
+5. Deploy the application to your EKS cluster inside the `demo-namespace` namespace.
+6. Verify deployment with a smoke test against the ALB endpoint.
+
+## Kubernetes Manifests Summary
+
+All Kubernetes configurations reside in `infrastructure/kubernetes/`:
+- **`namespace.yaml`**: Creates the `demo-namespace`.
+- **`rbac-serviceaccount.yaml`**: Links Kubernetes ServiceAccount `backend-sa` to our AWS IAM Role (IRSA).
+- **`backend-deployment.yaml`** & **`frontend-deployment.yaml`**: Application replica sets with liveness/readiness probes.
+- **`service.yaml`**: Unified internal ClusterIP services.
+- **`ingress.yaml`**: ALB Ingress definitions to expose Frontend on port 80 and Backend on port 8000 via `/api`.
+- **`backend-hpa.yaml`**: Horizontal Pod Autoscaler targeting 70% CPU usage.

@@ -28,12 +28,18 @@ class Message(Base):
     content = Column(String(255), index=True)
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    if not db.query(Message).first():
-        db.add(Message(content="Hello from RDS MySQL via FastAPI!"))
-        db.commit()
-    db.close()
+    import sqlalchemy.exc
+    try:
+        Base.metadata.create_all(bind=engine)
+        db = SessionLocal()
+        if not db.query(Message).first():
+            db.add(Message(content="Hello from RDS MySQL via FastAPI!"))
+            db.commit()
+        db.close()
+    except sqlalchemy.exc.OperationalError as e:
+        print(f"Warning: Could not connect to the database. {e}")
+    except Exception as e:
+        print(f"Warning: Database initialization failed. {e}")
 
 def get_db():
     db = SessionLocal()
