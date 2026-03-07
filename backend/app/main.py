@@ -22,10 +22,8 @@ def on_startup():
 
 @app.get("/health")
 def health_check():
-    return {
-        "status": "healthy",
-        "version": os.getenv("BUILD_VERSION", "1.0.0")
-    }
+    version = os.getenv("BUILD_VERSION", "1.0.0")
+    return {"status": "healthy", "version": version}
 
 
 @app.get("/ready")
@@ -39,13 +37,8 @@ def readiness_check(db: Session = Depends(get_db)):
 
 @app.get("/message")
 def get_message(db: Session = Depends(get_db)):
+    version = os.getenv("BUILD_VERSION", "1.0.0")
     msg = db.query(Message).first()
     if msg:
-        return {
-            "message": msg.content,
-            "version": os.getenv("BUILD_VERSION", "1.0.0")
-        }
-    return {
-        "message": "No message found",
-        "version": os.getenv("BUILD_VERSION", "1.0.0")
-    }
+        return {"message": msg.content, "version": version}
+    return {"message": "No message found", "version": version}
