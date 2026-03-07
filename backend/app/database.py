@@ -62,11 +62,11 @@ def init_db():
             db.add(Message(content="Hello from RDS MySQL via FastAPI!"))
             db.commit()
         db.close()
-        print("✅ Database connection successful and initialized properly.")
+        print("✅ DB connection successful.")
     except sqlalchemy.exc.OperationalError as e:
-        print(f"❌ Database connection failed. OperationalError: {e}")
+        print(f"❌ DB connection failed. OperationalError: {e}")
     except Exception as e:
-        print(f"❌ Database initialization failed with an unexpected error: {e}")
+        print(f"❌ DB initialization failed: {e}")
 
 
 def get_db():
