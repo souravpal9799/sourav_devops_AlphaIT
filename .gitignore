@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files (anywhere)
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments (common names)
+venv/
+.venv/
+env/
+.env/
+
+# Python packaging/build
+build/
+dist/
+*.egg-info/
+
+# Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform RDS credentials (do not commit)
+k8s/rds/creds/*.json
+k8s/rds/creds/*.env
+k8s/rds/creds/*.txt
+k8s/rds/.terraform/
+k8s/rds/*.tfstate*
+k8s/rds/*.tfstate.*.backup
+k8s/rds/.terraform.lock.hcl
+

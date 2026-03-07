@@ -1,0 +1,125 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_FRONTEND: frontend-app
+  ECR_BACKEND: backend-app
+  EKS_CLUSTER: mvp-cluster
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Lint Backend
+        run: |
+          pip install flake8
+          flake8 backend/app/
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Lint Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run lint
+
+      - name: Build Docker Images
+        run: |
+          docker build -t $ECR_FRONTEND:latest ./frontend
+          docker build -t $ECR_BACKEND:latest ./backend
+
+      - name: Trivy Scan Frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.ECR_FRONTEND }}:latest'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy Scan Backend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.ECR_BACKEND }}:latest'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Push Images to ECR
+        if: github.ref == 'refs/heads/main'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker tag $ECR_FRONTEND:latest $ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG
+          docker tag $ECR_BACKEND:latest $ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG
+
+  deploy:
+    needs: lint-and-build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update KubeConfig
+        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+
+      - name: Deploy to EKS
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Replace image tags in deployments
+          sed -i "s|<FRONTEND_IMAGE>|$ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG|g" infrastructure/kubernetes/frontend-deployment.yaml
+          sed -i "s|<BACKEND_IMAGE>|$ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG|g" infrastructure/kubernetes/backend-deployment.yaml
+          
+          kubectl apply -f infrastructure/kubernetes/namespace.yaml
+          kubectl apply -f infrastructure/kubernetes/rbac-serviceaccount.yaml
+          kubectl apply -f infrastructure/kubernetes/backend-deployment.yaml
+          kubectl apply -f infrastructure/kubernetes/frontend-deployment.yaml
+          kubectl apply -f infrastructure/kubernetes/service.yaml
+          kubectl apply -f infrastructure/kubernetes/ingress.yaml
+          kubectl apply -f infrastructure/kubernetes/backend-hpa.yaml
+          
+          kubectl rollout status deployment/backend -n mvp-namespace
+          kubectl rollout status deployment/frontend -n mvp-namespace
+
+      - name: Smoke Test
+        run: |
+          ALB_URL=$(kubectl get ingress -n mvp-namespace mvp-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          curl -f http://$ALB_URL/api/health || exit 1
