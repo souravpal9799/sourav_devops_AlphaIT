@@ -10,13 +10,25 @@ def get_db_credentials():
     try:
         get_secret_value_response = client.get_secret_value(SecretId=settings.SECRET_NAME)
         secret = json.loads(get_secret_value_response['SecretString'])
-        return secret['username'], secret['password']
+        return {
+            "user": secret.get('DB_USER', settings.DB_USER),
+            "password": secret.get('DB_PASSWORD', settings.DB_PASSWORD),
+            "host": secret.get('DB_HOST', settings.DB_HOST),
+            "port": secret.get('DB_PORT', settings.DB_PORT),
+            "name": secret.get('DB_NAME', settings.DB_NAME)
+        }
     except Exception as e:
-        print(f"Error retrieving secrets: {e}")
-        return "admin", "password" # Fallback for local testing if needed
+        print(f"Error retrieving secrets, falling back to configuration environment variables: {e}")
+        return {
+            "user": settings.DB_USER or "admin",
+            "password": settings.DB_PASSWORD or "password",
+            "host": settings.DB_HOST or "localhost",
+            "port": settings.DB_PORT or 3306,
+            "name": settings.DB_NAME or "demo_db"
+        }
 
-user, password = get_db_credentials()
-database_url = f"mysql+pymysql://{user}:{password}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+db_config = get_db_credentials()
+database_url = f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['name']}"
 
 engine = create_engine(database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -30,16 +42,18 @@ class Message(Base):
 def init_db():
     import sqlalchemy.exc
     try:
+        print("Attempting to connect to the database...")
         Base.metadata.create_all(bind=engine)
         db = SessionLocal()
         if not db.query(Message).first():
             db.add(Message(content="Hello from RDS MySQL via FastAPI!"))
             db.commit()
         db.close()
+        print("✅ Database connection successful and initialized properly.")
     except sqlalchemy.exc.OperationalError as e:
-        print(f"Warning: Could not connect to the database. {e}")
+        print(f"❌ Database connection failed. OperationalError: {e}")
     except Exception as e:
-        print(f"Warning: Database initialization failed. {e}")
+        print(f"❌ Database initialization failed with an unexpected error: {e}")
 
 def get_db():
     db = SessionLocal()

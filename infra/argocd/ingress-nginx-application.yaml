@@ -1,0 +1,31 @@
+# ArgoCD Application: install NGINX Ingress Controller from official Helm chart.
+# Deploy this first so the controller is ready before the app Ingress.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingress-nginx
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes.github.io/ingress-nginx
+    chart: ingress-nginx
+    targetRevision: "4.10.0"
+    helm:
+      releaseName: ingress-nginx
+      values: |
+        controller:
+          service:
+            type: LoadBalancer
+          # For AWS, the controller creates an ELB/NLB automatically
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ingress-nginx
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -27,7 +27,7 @@ A production-ready DevOps MVP project on AWS. This repository provisions infrast
 ## Changes & Current Configuration
 
 - **Project Namespace:** `demo-namespace`
-- **Kubernetes Services:** Consolidated into a unified `infrastructure/kubernetes/service.yaml`.
+- **Kubernetes Services:** Consolidated into a unified `infra/kubernetes/service.yaml`.
 - **Database:** Uses `demo_db` hosted on AWS RDS.
 - **Region:** Configured globally for `ap-south-1`.
 
@@ -37,7 +37,7 @@ A production-ready DevOps MVP project on AWS. This repository provisions infrast
 
 Navigate to the terraform directory:
 ```bash
-cd infrastructure/terraform
+cd infra/terraform
 terraform init
 terraform plan
 terraform apply --auto-approve
@@ -69,7 +69,7 @@ The pipeline will:
 
 ## Kubernetes Manifests Summary
 
-All Kubernetes configurations reside in `infrastructure/kubernetes/`:
+All Kubernetes configurations reside in `infra/kubernetes/`:
 - **`namespace.yaml`**: Creates the `demo-namespace`.
 - **`rbac-serviceaccount.yaml`**: Links Kubernetes ServiceAccount `backend-sa` to our AWS IAM Role (IRSA).
 - **`backend-deployment.yaml`** & **`frontend-deployment.yaml`**: Application replica sets with liveness/readiness probes.

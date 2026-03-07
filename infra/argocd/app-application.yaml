@@ -1,0 +1,29 @@
+# ArgoCD Application: frontend, backend, and Ingress (GitOps).
+# Replace REPO_URL with your repo, e.g. https://github.com/your-org/kube-projects
+# Images are public GHCR - use image placeholders (GITHUB_REPOSITORY_OWNER, IMAGE_TAG) or Argo Image Updater.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/souravpal9799/sourav-kube-manifest.git  # e.g. https://github.com/your-org/kube-projects
+    targetRevision: main
+    path: app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+  # Detect and apply changes from git on refresh (Argo CD refresh interval applies)
+  revisionHistoryLimit: 10
+

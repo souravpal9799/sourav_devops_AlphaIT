@@ -4,15 +4,7 @@ resource "random_password" "db_password" {
 }
 
 resource "aws_secretsmanager_secret" "db_credentials" {
-  name = "rds-db-credentials"
-}
-
-resource "aws_secretsmanager_secret_version" "db_credentials" {
-  secret_id     = aws_secretsmanager_secret.db_credentials.id
-  secret_string = jsonencode({
-    username = "admin"
-    password = random_password.db_password.result
-  })
+  name = "rds-db-creds"
 }
 
 resource "aws_db_subnet_group" "default" {
@@ -33,4 +25,15 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = var.security_group_ids
   skip_final_snapshot    = true
   publicly_accessible    = true
+}
+
+resource "aws_secretsmanager_secret_version" "db_credentials" {
+  secret_id     = aws_secretsmanager_secret.db_credentials.id
+  secret_string = jsonencode({
+    DB_USER     = aws_db_instance.main.username
+    DB_PASSWORD = aws_db_instance.main.password
+    DB_HOST     = aws_db_instance.main.address
+    DB_PORT     = aws_db_instance.main.port
+    DB_NAME     = aws_db_instance.main.db_name
+  })
 }
