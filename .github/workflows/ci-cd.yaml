@@ -265,31 +265,28 @@ jobs:
           kubectl rollout status deployment/backend  -n demo-namespace --timeout=5m
           kubectl rollout status deployment/frontend -n demo-namespace --timeout=5m
 
-# ──────────────────────────────────────────────────────────────
-# STAGE 4 – Smoke Test
-# ──────────────────────────────────────────────────────────────
-  smoke-test:
-    name: 🧪 Smoke Test
-    needs: k8s-deploy
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Update KubeConfig
-        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+      - name: Wait for Ingress Address
+        run: |
+          echo "Waiting for ALB Hostname to be assigned..."
+          for i in $(seq 1 30); do
+            ALB_URL=$(kubectl get ingress demo-ingress -n demo-namespace -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+            if [ -n "$ALB_URL" ]; then
+              echo "✅ ALB Hostname assigned: $ALB_URL"
+              echo "ALB_URL=$ALB_URL" >> $GITHUB_ENV
+              exit 0
+            fi
+            echo "  Attempt $i/30: Address not yet assigned. Waiting 10s..."
+            sleep 10
+          done
+          echo "❌ ALB Hostname was not assigned within 5 minutes."
+          kubectl describe ingress demo-ingress -n demo-namespace
+          exit 1
 
       - name: Run Smoke Test
         run: |
-          ALB_URL=$(kubectl get ingress demo-ingress -n demo-namespace -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-          echo "Testing ALB: $ALB_URL"
-          curl -f --retry 5 --retry-delay 10 http://$ALB_URL/health || exit 1
-          curl -f --retry 5 --retry-delay 10 http://$ALB_URL/api/health || exit 1
+          echo "Testing ALB: ${{ env.ALB_URL }}"
+          # Retry the curl as the ALB DNS might take a minute to resolve in public DNS
+          curl -f --retry 10 --retry-delay 5 http://${{ env.ALB_URL }}/health || exit 1
+          curl -f --retry 10 --retry-delay 5 http://${{ env.ALB_URL }}/api/health || exit 1
           echo "✅ Smoke test passed."
+
