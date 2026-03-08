@@ -24,13 +24,8 @@ spec:
               value: "1.0.0"
             - name: AWS_REGION
               value: "ap-south-1"
-            - name: DB_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_HOST
-            - name: DB_NAME
-              value: "demo_db"
+            - name: SECRET_NAME
+              value: "rds-db-creds1"
           livenessProbe:
             httpGet:
               path: /health
