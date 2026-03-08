@@ -19,9 +19,28 @@ A production-ready DevOps MVP project on AWS. This repository provisions infrast
 
 ---
 
+## 🏗️ Architecture Overview
+
+The system architecture follows AWS best practices for security, scalability, and high availability:
+
+*   **VPC Infrastructure**: Multi-AZ VPC with Public and Private subnets.
+*   **EKS Cluster**: Managed Kubernetes service hosting the application pods in private subnets.
+*   **ALB Ingress**: AWS Application Load Balancer routes traffic to the target services (Path-based: `/api` for Backend, `/` for Frontend).
+*   **RDS Database**: Managed PostgreSQL/MySQL located in private subnets, accessible only from the EKS nodes.
+*   **Security**: IAM Roles for Service Accounts (IRSA) grant pods least-privileged access to AWS Secrets Manager.
+*   **Logs & Metrics**: CloudWatch Logs and Metrics for comprehensive visibility.
+
+---
+
 ## 🚀 Deploying in a new AWS account (Alpha)
 
-Follow these steps to replicate this infrastructure and application in a clean AWS environment.
+### 📋 Prerequisites
+Before you begin, ensure you have the following installed and configured:
+*   [AWS CLI](https://aws.amazon.com/cli/) (authenticated with your target account)
+*   [Terraform](https://www.terraform.io/downloads.html) (>= 1.0)
+*   [kubectl](https://kubernetes.io/docs/tasks/tools/)
+*   [Helm](https://helm.sh/docs/intro/install/)
+*   A domain (optional, if using custom SSL/TLS)
 
 ### 1. Required Terraform Variables (`terraform.tfvars`)
 Create a file named `infra/terraform/terraform.tfvars` with the following:
@@ -71,6 +90,7 @@ After Terraform finishes, update your local kubeconfig:
 aws eks update-kubeconfig --name demo-devops-cluster --region ap-south-1
 ```
 
+```bash
 # 1. Apply static manifests
 kubectl apply -f infra/kubernetes/namespace.yaml
 kubectl apply -f infra/kubernetes/service.yaml
@@ -84,7 +104,44 @@ envsubst < infra/kubernetes/backend-deployment.yaml | kubectl apply -f -
 envsubst < infra/kubernetes/frontend-deployment.yaml | kubectl apply -f -
 ```
 
-#### C. Cleanup (Destroy)
+---
+
+## 🔍 Verification & Observability
+
+### 1. Verification Steps
+*   **Health Checks**: Access `http://<ALB_URL>/health` and `http://<ALB_URL>/api/health`.
+*   **Pod Status**: Run `kubectl get pods -n demo-namespace` to ensure all pods are `Running`.
+*   **Ingress Status**: Run `kubectl get ingress -n demo-namespace` to verify the ALB address is assigned.
+
+### 2. CloudWatch Dashboard
+The project provisions a comprehensive dashboard (`demo-devops-dashboard`) containing:
+*   **ALB Metrics**: Request Count, Target Response Time, and Target 5XX Error Count (via Search expressions).
+*   **RDS Metrics**: CPU Utilization, Database Connections, and Free Storage Space.
+*   **EKS Node Metrics**: Node CPU and Memory Utilization.
+
+---
+
+## 📖 Runbook & Troubleshooting
+
+### 1. Where to check logs
+*   **Pod Logs**: `kubectl logs -l app=backend -n demo-namespace` or `kubectl logs -l app=frontend -n demo-namespace`.
+*   **CloudWatch Logs**: Navigate to Log Group `/aws/containerinsights/demo-devops-cluster/application`.
+*   **ALB Controller Logs**: `kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller`.
+
+### 2. Troubleshooting Unhealthy Targets
+If the ALB Target Group shows targets as "Unhealthy":
+*   Check pod status: `kubectl get pods -n demo-namespace`.
+*   Check service health endpoints locally: `kubectl port-forward svc/backend 8000:80 -n demo-namespace` then hit `localhost:8000/api/health`.
+*   Verify Security Groups: Ensure EKS Node SGs allow traffic from the ALB SG on the target ports.
+
+### 3. Rollback Approach
+*   **CI/CD Rollback**: Revert the commit on the `main` branch to trigger a redeploy of the previous version.
+*   **Kubernetes Rollback**: Run `kubectl rollout undo deployment/backend -n demo-namespace`.
+*   **Terraform Rollback**: Revert infrastructure changes in code and run `terraform apply`.
+
+---
+
+## 🧹 Cleanup (Destroy)
 To tear down the entire environment and avoid AWS costs:
 ```bash
 # 1. Remove Kubernetes resources first to clean up the ALB
@@ -94,12 +151,3 @@ kubectl delete -f infra/kubernetes/
 cd infra/terraform
 terraform destroy --auto-approve
 ```
-
----
-
-## System Architecture Highlights
-
-*   **Networking:** Custom VPC with 2 Public (ALB) and 2 Private (EKS/RDS) subnets.
-*   **Security:** IRSA for pod-level IAM permissions; RDS credentials moved from ENV files to AWS Secrets Manager.
-*   **Routing:** Unified ALB Ingress handles both Frontend (Root) and Backend (via `/api`) traffic.
-*   **Observability:** CloudWatch Dashboard for real-time cluster and database monitoring.
