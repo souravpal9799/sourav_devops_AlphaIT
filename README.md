@@ -8,7 +8,7 @@ A production-ready DevOps MVP project on AWS. This repository provisions infrast
 
 *   **Frontend URL (ALB endpoint):** [http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com](http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com)
 *   **Backend health URL (/health):** [http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com/api/health](http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com/api/health)
-*   **CI/CD used:** GitHub Actions
+*   **CI/CD used:** GitHub Actions (Automated: Triggers on every push/commit to the `main` branch).
 *   **How backend connects to RDS:** The FastAPI application uses **IAM Roles for Service Accounts (IRSA)** to securely retrieve database credentials from **AWS Secrets Manager** at runtime.
 *   **CloudWatch dashboard:** `demo-devops-dashboard` (Provides metrics for EKS Node CPU/Memory and RDS Performance).
 *   **Assumptions:**
@@ -48,6 +48,9 @@ environment  = "production"
 If using the provided GitHub Actions pipeline, set the following **Secrets** in your repository:
 *   `AWS_ACCESS_KEY_ID`: Your AWS access key.
 *   `AWS_SECRET_ACCESS_KEY`: Your AWS secret key.
+
+> [!NOTE]
+> The setup is fully automated. Any code push or merged pull request to the **main** branch will automatically trigger the CI/CD pipeline, starting a full deployment (Lint -> Build -> Push -> Terraform -> Kubernetes -> Smoke Test).
 
 ### 4. Step-by-Step Deployment Commands
 
