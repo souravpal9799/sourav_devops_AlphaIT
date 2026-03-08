@@ -16,7 +16,7 @@ spec:
       serviceAccountName: backend-sa
       containers:
         - name: backend
-          image: <BACKEND_IMAGE>
+          image: "${BACKEND_IMAGE}"
           ports:
             - containerPort: 8000
           env:

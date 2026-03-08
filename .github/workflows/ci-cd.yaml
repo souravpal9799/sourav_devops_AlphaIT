@@ -240,23 +240,36 @@ jobs:
           kubectl describe externalsecret backend-db-credentials -n demo-namespace
           exit 1
 
-      # ── Deploy Application ──
-      - name: Substitute Image Tags
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          sed -i "s|<FRONTEND_IMAGE>|$ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG|g" infra/kubernetes/frontend-deployment.yaml
-          sed -i "s|<BACKEND_IMAGE>|$ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG|g" infra/kubernetes/backend-deployment.yaml
-
+      # ── Apply all non-Deployment manifests (no image substitution needed) ──
       - name: Apply Kubernetes Manifests
         run: |
           kubectl apply -f infra/kubernetes/namespace.yaml
-          kubectl apply -R -f infra/kubernetes/
+          kubectl apply -f infra/kubernetes/cluster-secret-store.yaml
+          kubectl apply -f infra/kubernetes/external-secret.yaml
+          kubectl apply -f infra/kubernetes/backend-hpa.yaml || true
+
+      # ── Substitute image and apply Deployments ──
+      # envsubst replaces ${BACKEND_IMAGE} / ${FRONTEND_IMAGE} in the YAML
+      # before piping to kubectl. Works on FIRST deploy and rolling updates alike.
+      - name: Deploy Application Images
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          BACKEND_IMAGE:  "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:${{ env.IMAGE_TAG }}"
+          FRONTEND_IMAGE: "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ env.IMAGE_TAG }}"
+        run: |
+          echo "Deploying backend:  $BACKEND_IMAGE"
+          echo "Deploying frontend: $FRONTEND_IMAGE"
+
+          # envsubst renders the YAML with real image values and pipes directly into kubectl
+          # This is safe for fresh clusters AND rolling updates — no file mutation needed
+          envsubst < infra/kubernetes/backend-deployment.yaml  | kubectl apply -f -
+          envsubst < infra/kubernetes/frontend-deployment.yaml | kubectl apply -f -
 
       - name: Wait for Rollout
         run: |
           kubectl rollout status deployment/backend  -n demo-namespace --timeout=5m
           kubectl rollout status deployment/frontend -n demo-namespace --timeout=5m
+
 
 # ──────────────────────────────────────────────────────────────
 # STAGE 4 – Smoke Test
