@@ -57,7 +57,9 @@ If using the provided GitHub Actions pipeline, set the following **Secrets** in 
 #### A. Infrastructure Provisioning (Terraform)
 ```bash
 cd infra/terraform
-terraform init
+# Generate remote backend configuration (S3 + DynamoDB)
+bash setup-backend.sh 
+terraform init -backend-config=backend-config.hcl
 terraform plan
 terraform apply --auto-approve
 ```
