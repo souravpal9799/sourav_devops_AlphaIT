@@ -1,3 +1,4 @@
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import get_db, Message, init_db
