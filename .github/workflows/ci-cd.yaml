@@ -253,9 +253,12 @@ jobs:
       # before piping to kubectl. Works on FIRST deploy and rolling updates alike.
       - name: Deploy Application Images
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          BACKEND_IMAGE:  "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:${{ env.IMAGE_TAG }}"
-          FRONTEND_IMAGE: "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ env.IMAGE_TAG }}"
+          # IMPORTANT: Reference the job output directly here.
+          # Using ${{ env.IMAGE_TAG }} in a step env block only reads the
+          # workflow-level env block (top of file), NOT the job-level env.
+          # That is why IMAGE_TAG was empty before — this is the correct fix.
+          BACKEND_IMAGE:  "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:${{ needs.lint-and-build.outputs.image_tag }}"
+          FRONTEND_IMAGE: "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ needs.lint-and-build.outputs.image_tag }}"
         run: |
           echo "Deploying backend:  $BACKEND_IMAGE"
           echo "Deploying frontend: $FRONTEND_IMAGE"
