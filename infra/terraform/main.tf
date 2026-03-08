@@ -34,9 +34,19 @@ module "irsa" {
   project_name                 = var.project_name
   oidc_provider_arn            = module.eks.oidc_provider_arn
   oidc_provider_url            = module.eks.oidc_provider_url
-  namespace                    = "demo-devops"
+  namespace                    = kubernetes_namespace.app_namespace.metadata[0].name
   service_account_name         = "backend-sa"
   secrets_manager_secret_arn   = module.rds.secret_arn
+}
+
+resource "kubernetes_service_account" "backend_sa" {
+  metadata {
+    name      = "backend-sa"
+    namespace = kubernetes_namespace.app_namespace.metadata[0].name
+    annotations = {
+      "eks.amazonaws.com/role-arn" = module.irsa.role_arn
+    }
+  }
 }
 
 module "cloudwatch" {
