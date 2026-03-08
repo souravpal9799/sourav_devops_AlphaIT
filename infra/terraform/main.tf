@@ -62,6 +62,16 @@ module "cloudwatch" {
   cluster_name = module.eks.cluster_name
 }
 
+module "alb_controller" {
+  source            = "./modules/alb-controller"
+  project_name      = var.project_name
+  cluster_name      = module.eks.cluster_name
+  vpc_id            = module.vpc.vpc_id
+  region            = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+}
+
 resource "kubernetes_namespace" "app_namespace" {
   metadata {
     name = "demo-namespace"
