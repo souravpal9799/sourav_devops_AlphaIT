@@ -4,7 +4,7 @@ resource "random_password" "db_password" {
 }
 
 resource "aws_secretsmanager_secret" "db_credentials" {
-  name = "rds-db-creds"
+  name = "rds-db-creds1"
 }
 
 resource "aws_db_subnet_group" "default" {
