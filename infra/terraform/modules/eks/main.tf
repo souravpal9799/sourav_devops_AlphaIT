@@ -79,3 +79,72 @@ resource "aws_iam_openid_connect_provider" "eks" {
   thumbprint_list = [data.tls_certificate.cluster.certificates[0].sha1_fingerprint]
   url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
+
+# --- External Secrets Operator Setup ---
+
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+data "aws_iam_policy_document" "eso_secrets_policy_doc" {
+  statement {
+    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    # Allow reading secrets in the region. Scope can be restricted further if needed.
+    resources = ["arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:*"]
+  }
+}
+
+resource "aws_iam_policy" "eso_secrets_policy" {
+  name        = "${var.project_name}-external-secrets-policy"
+  policy      = data.aws_iam_policy_document.eso_secrets_policy_doc.json
+}
+
+module "external_secrets_role" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.0"
+
+  role_name = "${var.project_name}-external-secrets-operator"
+  
+  role_policy_arns = {
+    policy = aws_iam_policy.eso_secrets_policy.arn
+  }
+
+  oidc_providers = {
+    main = {
+      provider_arn               = aws_iam_openid_connect_provider.eks.arn
+      namespace_service_accounts = ["external-secrets:external-secrets"]
+    }
+  }
+}
+
+resource "kubernetes_namespace" "external_secrets" {
+  metadata {
+    name = "external-secrets"
+  }
+  
+  depends_on = [
+    aws_eks_node_group.main
+  ]
+}
+
+resource "helm_release" "external_secrets" {
+  name             = "external-secrets"
+  repository       = "https://charts.external-secrets.io"
+  chart            = "external-secrets"
+  namespace        = kubernetes_namespace.external_secrets.metadata[0].name
+  version          = "0.9.11"
+
+  set {
+    name  = "installCRDs"
+    value = "true"
+  }
+
+  set {
+    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = module.external_secrets_role.iam_role_arn
+  }
+  
+  depends_on = [
+    kubernetes_namespace.external_secrets,
+    aws_eks_node_group.main
+  ]
+}
