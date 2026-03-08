@@ -1,10 +1,8 @@
-
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker
 from .config import settings
 
 
-# We now rely exclusively on environment variables injected via Kubernetes Secret
 db_config = {
     "user": settings.DB_USER or "admin",
     "password": settings.DB_PASSWORD or "password",
