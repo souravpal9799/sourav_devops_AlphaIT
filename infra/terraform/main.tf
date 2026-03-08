@@ -68,36 +68,3 @@ resource "kubernetes_namespace" "app_namespace" {
   }
 }
 
-resource "kubernetes_service" "frontend_lb" {
-  metadata {
-    name      = "frontend"
-    namespace = kubernetes_namespace.app_namespace.metadata[0].name
-  }
-  spec {
-    selector = {
-      app = "frontend"
-    }
-    port {
-      port        = 80
-      target_port = 3000
-    }
-    type = "LoadBalancer"
-  }
-}
-
-resource "kubernetes_service" "backend_lb" {
-  metadata {
-    name      = "backend"
-    namespace = kubernetes_namespace.app_namespace.metadata[0].name
-  }
-  spec {
-    selector = {
-      app = "backend"
-    }
-    port {
-      port        = 8000
-      target_port = 8000
-    }
-    type = "LoadBalancer"
-  }
-}

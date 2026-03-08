@@ -4,7 +4,7 @@ metadata:
   name: backend
   namespace: demo-namespace
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: backend
   ports:
@@ -19,7 +19,7 @@ metadata:
   name: frontend
   namespace: demo-namespace
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: frontend
   ports:
