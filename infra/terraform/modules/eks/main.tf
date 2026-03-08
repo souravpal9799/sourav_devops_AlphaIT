@@ -52,6 +52,11 @@ resource "aws_iam_role_policy_attachment" "node_policy_3" {
   role       = aws_iam_role.node_role.name
 }
 
+resource "aws_iam_role_policy_attachment" "node_policy_cloudwatch" {
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+  role       = aws_iam_role.node_role.name
+}
+
 resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "${var.project_name}-ng"

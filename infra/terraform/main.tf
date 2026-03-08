@@ -5,10 +5,15 @@ module "tf_state" {
   environment  = var.environment
 }
 
+locals {
+  availability_zones = ["${var.aws_region}a", "${var.aws_region}b"]
+}
+
 module "vpc" {
-  source       = "./modules/vpc"
-  project_name = var.project_name
-  cidr_block   = "10.1.0.0/16"
+  source             = "./modules/vpc"
+  project_name       = var.project_name
+  cidr_block         = "10.1.0.0/16"
+  availability_zones = local.availability_zones
 }
 
 module "security_group" {
@@ -57,9 +62,10 @@ resource "kubernetes_service_account" "backend_sa" {
 }
 
 module "cloudwatch" {
-  source       = "./modules/cloudwatch"
-  project_name = var.project_name
-  cluster_name = module.eks.cluster_name
+  source          = "./modules/cloudwatch"
+  project_name    = var.project_name
+  cluster_name    = module.eks.cluster_name
+  rds_instance_id = module.rds.db_instance_id
 }
 
 module "alb_controller" {
@@ -70,6 +76,12 @@ module "alb_controller" {
   region            = var.aws_region
   oidc_provider_arn = module.eks.oidc_provider_arn
   oidc_provider_url = module.eks.oidc_provider_url
+}
+
+resource "aws_eks_addon" "cloudwatch_observability" {
+  cluster_name                = module.eks.cluster_name
+  addon_name                  = "amazon-cloudwatch-observability"
+  resolve_conflicts_on_create = "OVERWRITE"
 }
 
 resource "kubernetes_namespace" "app_namespace" {
