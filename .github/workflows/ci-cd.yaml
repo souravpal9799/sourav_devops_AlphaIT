@@ -112,6 +112,7 @@ jobs:
           sed -i "s|<FRONTEND_IMAGE>|$ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG|g" infra/kubernetes/frontend-deployment.yaml
           sed -i "s|<BACKEND_IMAGE>|$ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG|g" infra/kubernetes/backend-deployment.yaml
           
+          kubectl apply -f infra/kubernetes/namespace.yaml
           kubectl apply -R -f infra/kubernetes/ 
           
           kubectl rollout status deployment/backend -n demo-namespace
