@@ -8,7 +8,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/message')
+    const base = process.env.NEXT_PUBLIC_API_URL || '/api';
+    fetch(`${base}/message`)
       .then((res) => {
         if (!res.ok) throw new Error('Network response was not ok');
         return res.json();

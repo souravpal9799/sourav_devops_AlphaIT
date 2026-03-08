@@ -4,13 +4,14 @@ metadata:
   name: backend
   namespace: demo-namespace
 spec:
-  type: ClusterIP  # Internal service - only accessible via ingress
+  type: ClusterIP  # Internal service - ingressed via ALB
   selector:
     app: backend
   ports:
     - protocol: TCP
-      port: 8000
+      port: 80
       targetPort: 8000
+
 ---
 apiVersion: v1
 kind: Service

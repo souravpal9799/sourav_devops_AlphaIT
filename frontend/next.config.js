@@ -15,6 +15,9 @@ const nextConfig = {
     // In production, no rewrites - let ingress handle routing
     return [];
   },
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.API_URL || '',
+  }
 }
 
 module.exports = nextConfig
