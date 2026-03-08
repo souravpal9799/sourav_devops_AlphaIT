@@ -207,6 +207,14 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
+      # ── Apply all other manifests (namespace, services, ingress, hpa) ──
+      - name: Apply Kubernetes Manifests
+        run: |
+          kubectl apply -f infra/kubernetes/namespace.yaml
+          kubectl apply -f infra/kubernetes/service.yaml
+          kubectl apply -f infra/kubernetes/ingress.yaml
+          kubectl apply -f infra/kubernetes/backend-hpa.yaml || true
+
       # ── Apply ESO manifests FIRST so the K8s Secret exists before the pod starts ──
       - name: Apply External Secrets Manifests
         run: |
@@ -229,12 +237,6 @@ jobs:
           echo "❌ ExternalSecret did not sync within 2 minutes."
           kubectl describe externalsecret backend-db-credentials -n demo-namespace
           exit 1
-
-      # ── Apply all other manifests (namespace, services, ingress, hpa) ──
-      - name: Apply Kubernetes Manifests
-        run: |
-          kubectl apply -f infra/kubernetes/namespace.yaml
-          kubectl apply -f infra/kubernetes/backend-hpa.yaml || true
 
       # ── Deploy images — IMAGE_TAG comes from the workflow-level env (always available) ──
       - name: Deploy Application Images
