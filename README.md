@@ -1,97 +1,93 @@
-# AWS DevOps EKS Solution (Demo_devops)
+# DevOps EKS Solution
 
-A production-ready DevOps MVP project on AWS. This repository provisions infrastructure via Terraform and deploys a full-stack application to Amazon EKS using a complete CI/CD pipeline.
+A production-ready DevOps MVP project on AWS. This repository provisions infrastructure via Terraform and deploys a full-stack application to Amazon EKS using a modern CI/CD pipeline.
 
-## System Architecture
+---
 
-- **AWS Region:** `ap-south-1`
-- **Infrastructure as Code:** Terraform (VPC, Security Groups, EKS, RDS, ECR, IRSA, CloudWatch Dashboard)
-- **Container Orchestration:** Amazon EKS
-- **Database:** Amazon RDS for MySQL (`demo_db`)
-- **Container Registry:** Amazon ECR (`frontend-app`, `backend-app`)
-- **Security & IAM:** AWS Secrets Manager for DB credentials, IAM Roles for Service Accounts (IRSA) for pod-level AWS API access.
-- **Ingress / Load Balancing:** AWS ALB Ingress Controller routing traffic to our microservices.
-- **CI/CD:** GitHub Actions (linting, docker builds, Trivy vulnerability scanning, ECR pushing, EKS deployment).
-- **Monitoring:** CloudWatch metrics dashboard for EKS nodes and RDS CPU utilization.
+## 📝 Submission Note
 
-## Application Stack
+*   **Frontend URL (ALB endpoint):** [http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com](http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com)
+*   **Backend health URL (/health):** [http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com/api/health](http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com/api/health)
+*   **CI/CD used:** GitHub Actions
+*   **How backend connects to RDS:** The FastAPI application uses **IAM Roles for Service Accounts (IRSA)** to securely retrieve database credentials from **AWS Secrets Manager** at runtime.
+*   **CloudWatch dashboard:** `demo-devops-dashboard` (Provides metrics for EKS Node CPU/Memory and RDS Performance).
+*   **Assumptions:**
+    *   Deployment is performed in the `ap-south-1` (Mumbai) region.
+    *   The AWS Load Balancer Controller is installed via Helm to manage the ALB Ingress.
+    *   Pods are deployed in private subnets and exposed via an internet-facing ALB in public subnets.
+    *   Database schema is automatically initialized by the backend on its first successful connection to RDS.
 
-1. **Backend:** Python FastAPI
-   - Connects to RDS using credentials retrieved at runtime from AWS Secrets Manager.
-   - Provides `/health`, `/ready`, and `/message` endpoints.
-   - Automatically initializes the database schema and a seed row upon startup.
-2. **Frontend:** React / Next.js
-   - Calls the FastAPI backend asynchronously to retrieve dynamic DB payload data.
-   - Displays real-time API connectivity and build version details.
+---
 
-## Changes & Current Configuration
+## 🚀 Deploying in a new AWS account (Alpha)
 
-- **Project Namespace:** `demo-namespace`
-- **Kubernetes Services:** Consolidated into a unified `infra/kubernetes/service.yaml`.
-- **Database:** Uses `demo_db` hosted on AWS RDS.
-- **Region:** Configured globally for `ap-south-1`.
+Follow these steps to replicate this infrastructure and application in a clean AWS environment.
 
-## Local Setup & Deployment
+### 1. Required Terraform Variables (`terraform.tfvars`)
+Create a file named `infra/terraform/terraform.tfvars` with the following:
+```hcl
+project_name = "your-project-name"
+aws_region   = "ap-south-1"
+environment  = "production"
+```
 
-### 1. Terraform Infrastructure Provisioning
+### 2. Required AWS Permissions & Roles
+*   **Deployment Identity:** Ensure your AWS CLI/Terraform user has at least the following policies attached for successful provisioning:
+    *   `AmazonDynamoDBFullAccess`
+    *   `AmazonEC2ContainerRegistryFullAccess`
+    *   `AmazonRDSFullAccess`
+    *   `AmazonS3FullAccess`
+    *   `AmazonVPCFullAccess`
+    *   `SecretsManagerReadWrite`
+    *   `IAMFullAccess`
+    *   `AmazonEKSClusterPolicy`
+*   **EKS Standard Roles:** The project creates specific IAM roles for the EKS Cluster and Node Groups with policies like `AmazonEKSClusterPolicy`, `AmazonEKSWorkerNodePolicy`, and `AmazonEC2ContainerRegistryReadOnly`.
+*   **IRSA:** Pod-level security is managed via IAM OpenID Connect (OIDC) providers.
 
-Navigate to the terraform directory:
+### 3. CI/CD Variables
+If using the provided GitHub Actions pipeline, set the following **Secrets** in your repository:
+*   `AWS_ACCESS_KEY_ID`: Your AWS access key.
+*   `AWS_SECRET_ACCESS_KEY`: Your AWS secret key.
+
+### 4. Step-by-Step Deployment Commands
+
+#### A. Infrastructure Provisioning (Terraform)
 ```bash
 cd infra/terraform
 terraform init
 terraform plan
 terraform apply --auto-approve
 ```
-*Wait for EKS, RDS, and ECR to be provisioned.*
 
-### 2. Kubernetes Configuration
-
-After Terraform finishes, update your local `kubeconfig`:
+#### B. Kubernetes Configuration & Deployment
+After Terraform finishes, update your local kubeconfig:
 ```bash
-aws eks update-kubeconfig --name demo-cluster --region ap-south-1
+# Update cluster name if you changed it in tfvars
+aws eks update-kubeconfig --name demo-devops-cluster --region ap-south-1
 ```
 
-### 3. Application Deployment via GitHub Actions
+Apply the Kubernetes manifests:
+```bash
+# Deploy core components (Namespace, Secrets, Deployments, Services, Ingress)
+kubectl apply -f infra/kubernetes/
+```
 
-The provided CI/CD pipeline (`.github/workflows/ci-cd.yaml`) automates the deployment when code is pushed to the `main` branch. 
+#### C. Cleanup (Destroy)
+To tear down the entire environment and avoid AWS costs:
+```bash
+# 1. Remove Kubernetes resources first to clean up the ALB
+kubectl delete -f infra/kubernetes/
 
-To run properly, ensure the following GitHub Repository Secrets are set:
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-
-The pipeline will:
-1. Lint the Python and TypeScript code.
-2. Build and push Docker images to Amazon ECR.
-3. Run Trivy vulnerability scans.
-4. Replace placeholder image tags in the Kubernetes manifests.
-5. Deploy the application to your EKS cluster inside the `demo-namespace` namespace.
-6. Verify deployment with a smoke test against the ALB endpoint.
-
-## Kubernetes Manifests Summary
-
-All Kubernetes configurations reside in `infra/kubernetes/`:
-- **`namespace.yaml`**: Creates the `demo-namespace`.
-- **`rbac-serviceaccount.yaml`**: Links Kubernetes ServiceAccount `backend-sa` to our AWS IAM Role (IRSA).
-- **`backend-deployment.yaml`** & **`frontend-deployment.yaml`**: Application replica sets with liveness/readiness probes.
-- **`service.yaml`**: Unified internal ClusterIP services.
-- **`ingress.yaml`**: ALB Ingress definitions to expose Frontend on port 80 and Backend on port 8000 via `/api`.
-- **`backend-hpa.yaml`**: Horizontal Pod Autoscaler targeting 70% CPU usage.
+# 2. Destroy infrastructure
+cd infra/terraform
+terraform destroy --auto-approve
+```
 
 ---
 
-## Submission Details
+## System Architecture Highlights
 
-The following values come from the current repository configuration and may need to be adjusted once the stack is deployed:
-
-- **Frontend URL (ALB endpoint):** `http://<ALB_DNS_NAME>` (retrieve via `kubectl get ingress -n demo-namespace` or from Terraform output)
-- **Backend health URL:** `http://<ALB_DNS_NAME>/api/health` (FastAPI `/health` exposed under `/api` path by the ALB ingress)
-- **CI/CD used:** GitHub Actions (see `.github/workflows/ci-cd.yaml`)
-- **How backend connects to RDS:** the FastAPI app reads database credentials at runtime from AWS Secrets Manager; the Kubernetes deployment sets those values as environment variables via IRSA/Secrets Manager integration.
-- **CloudWatch dashboard:** `${project_name}-dashboard` (e.g. `demo-devops-dashboard` generated by Terraform under `infra/terraform/modules/cloudwatch`)
-- **Assumptions:**
-  - AWS region is `ap-south-1` and resources are provisioned there.
-  - EKS cluster name is `demo-cluster` with namespace `demo-namespace`.
-  - ALB is provisioned by the AWS ALB Ingress Controller and exposes port 80 to the Internet.
-  - RDS instance is MySQL named `demo_db` with credentials managed by Secrets Manager.
-  - GitHub repository secrets for AWS credentials must be configured for CI/CD.
-
+*   **Networking:** Custom VPC with 2 Public (ALB) and 2 Private (EKS/RDS) subnets.
+*   **Security:** IRSA for pod-level IAM permissions; RDS credentials moved from ENV files to AWS Secrets Manager.
+*   **Routing:** Unified ALB Ingress handles both Frontend (Root) and Backend (via `/api`) traffic.
+*   **Observability:** CloudWatch Dashboard for real-time cluster and database monitoring.
