@@ -12,6 +12,8 @@ env:
   ECR_BACKEND: backend-app
   EKS_CLUSTER: demo-devops-cluster
   TF_DIR: infra/terraform
+  # Single source of truth for the image tag — available in every job automatically
+  IMAGE_TAG: "v1.0.${{ github.run_number }}"
 
 # ──────────────────────────────────────────────────────────────
 # STAGE 1 – Lint, Build, Scan, Push to ECR
@@ -20,8 +22,6 @@ jobs:
   lint-and-build:
     name: 🔍 Lint, Build & Push
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.set_tag.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v3
 
@@ -82,16 +82,12 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Set image tag output
-        id: set_tag
-        run: echo "image_tag=v1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-
       - name: Push Images to ECR
         if: github.ref == 'refs/heads/main'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ steps.set_tag.outputs.image_tag }}
         run: |
+          echo "Pushing with tag: $IMAGE_TAG"
           docker tag $ECR_FRONTEND:latest $ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG
           docker tag $ECR_BACKEND:latest $ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG
@@ -100,18 +96,15 @@ jobs:
 # ──────────────────────────────────────────────────────────────
 # APPROVAL GATE 1 – Terraform Deployment Approval
 # Reviewers: go to Actions → this run → "Review pending deployments"
-# Choose:  ✅ Approve (Deploy)  |  ⏭ Skip  |  ❌ Reject (Cancel)
+# Choose:  ✅ Approve (Deploy)  |  ❌ Reject (Cancel/Skip)
 # ──────────────────────────────────────────────────────────────
   terraform-approval:
     name: 🛂 Approve Terraform Deploy
     needs: lint-and-build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    # This job blocks until a reviewer approves in the GitHub UI.
-    # To SKIP terraform, reject here and manually trigger only the k8s job.
-    # To CANCEL the whole pipeline, dismiss/reject without re-running.
     environment:
-      name: terraform-approval    # ← Create this Environment in repo Settings → Environments
+      name: terraform-approval    # ← Create in repo Settings → Environments → Required reviewers
     steps:
       - name: Approval gate passed
         run: echo "✅ Terraform deployment approved."
@@ -153,7 +146,6 @@ jobs:
         run: terraform validate
 
       - name: Terraform Plan
-        id: plan
         run: |
           terraform plan \
             -var="project_name=demo-devops" \
@@ -176,11 +168,11 @@ jobs:
 # ──────────────────────────────────────────────────────────────
   k8s-approval:
     name: 🛂 Approve K8s Deploy
-    needs: lint-and-build     # ← Only depends on build; Terraform is independent
+    needs: lint-and-build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment:
-      name: k8s-approval      # ← Create this Environment in repo Settings → Environments
+      name: k8s-approval          # ← Create in repo Settings → Environments → Required reviewers
     steps:
       - name: Approval gate passed
         run: echo "✅ Kubernetes deployment approved."
@@ -192,14 +184,12 @@ jobs:
     name: 🚀 Deploy to EKS
     needs:
       - k8s-approval
-      - terraform-deploy      # Ensures CRDs are installed before applying ESO manifests
+      - terraform-deploy
     runs-on: ubuntu-latest
     if: |
       always() &&
       needs.k8s-approval.result == 'success' &&
       (needs.terraform-deploy.result == 'success' || needs.terraform-deploy.result == 'skipped')
-    env:
-      IMAGE_TAG: ${{ needs.lint-and-build.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v3
 
@@ -217,7 +207,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      # ── Apply ESO manifests FIRST (ClusterSecretStore + ExternalSecret) ──
+      # ── Apply ESO manifests FIRST so the K8s Secret exists before the pod starts ──
       - name: Apply External Secrets Manifests
         run: |
           kubectl apply -f infra/kubernetes/cluster-secret-store.yaml
@@ -240,31 +230,25 @@ jobs:
           kubectl describe externalsecret backend-db-credentials -n demo-namespace
           exit 1
 
-      # ── Apply all non-Deployment manifests (no image substitution needed) ──
+      # ── Apply all other manifests (namespace, services, ingress, hpa) ──
       - name: Apply Kubernetes Manifests
         run: |
           kubectl apply -f infra/kubernetes/namespace.yaml
-          kubectl apply -f infra/kubernetes/cluster-secret-store.yaml
-          kubectl apply -f infra/kubernetes/external-secret.yaml
           kubectl apply -f infra/kubernetes/backend-hpa.yaml || true
 
-      # ── Substitute image and apply Deployments ──
-      # envsubst replaces ${BACKEND_IMAGE} / ${FRONTEND_IMAGE} in the YAML
-      # before piping to kubectl. Works on FIRST deploy and rolling updates alike.
+      # ── Deploy images — IMAGE_TAG comes from the workflow-level env (always available) ──
       - name: Deploy Application Images
         env:
-          # IMPORTANT: Reference the job output directly here.
-          # Using ${{ env.IMAGE_TAG }} in a step env block only reads the
-          # workflow-level env block (top of file), NOT the job-level env.
-          # That is why IMAGE_TAG was empty before — this is the correct fix.
-          BACKEND_IMAGE:  "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:${{ needs.lint-and-build.outputs.image_tag }}"
-          FRONTEND_IMAGE: "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ needs.lint-and-build.outputs.image_tag }}"
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          echo "Deploying backend:  $BACKEND_IMAGE"
-          echo "Deploying frontend: $FRONTEND_IMAGE"
+          BACKEND_IMAGE="$ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG"
+          FRONTEND_IMAGE="$ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG"
 
-          # envsubst renders the YAML with real image values and pipes directly into kubectl
-          # This is safe for fresh clusters AND rolling updates — no file mutation needed
+          echo "IMAGE_TAG:        $IMAGE_TAG"
+          echo "Backend image:    $BACKEND_IMAGE"
+          echo "Frontend image:   $FRONTEND_IMAGE"
+
+          export BACKEND_IMAGE FRONTEND_IMAGE
           envsubst < infra/kubernetes/backend-deployment.yaml  | kubectl apply -f -
           envsubst < infra/kubernetes/frontend-deployment.yaml | kubectl apply -f -
 
@@ -272,7 +256,6 @@ jobs:
         run: |
           kubectl rollout status deployment/backend  -n demo-namespace --timeout=5m
           kubectl rollout status deployment/frontend -n demo-namespace --timeout=5m
-
 
 # ──────────────────────────────────────────────────────────────
 # STAGE 4 – Smoke Test
