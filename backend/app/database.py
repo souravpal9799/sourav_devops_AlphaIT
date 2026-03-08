@@ -1,40 +1,18 @@
-import json
-import boto3
+
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker
 from .config import settings
 
 
-def get_db_credentials():
-    session = boto3.session.Session()
-    client = session.client(
-        service_name="secretsmanager",
-        region_name=settings.AWS_REGION
-    )
-    try:
-        get_secret_value_response = client.get_secret_value(
-            SecretId=settings.SECRET_NAME
-        )
-        secret = json.loads(get_secret_value_response["SecretString"])
-        return {
-            "user": secret.get("DB_USER", settings.DB_USER),
-            "password": secret.get("DB_PASSWORD", settings.DB_PASSWORD),
-            "host": secret.get("DB_HOST", settings.DB_HOST),
-            "port": secret.get("DB_PORT", settings.DB_PORT),
-            "name": secret.get("DB_NAME", settings.DB_NAME),
-        }
-    except Exception as e:
-        print(f"Error retrieving secrets, falling back to env vars: {e}")
-        return {
-            "user": settings.DB_USER or "admin",
-            "password": settings.DB_PASSWORD or "password",
-            "host": settings.DB_HOST or "localhost",
-            "port": settings.DB_PORT or 3306,
-            "name": settings.DB_NAME or "demo_db",
-        }
+# We now rely exclusively on environment variables injected via Kubernetes Secret
+db_config = {
+    "user": settings.DB_USER or "admin",
+    "password": settings.DB_PASSWORD or "password",
+    "host": settings.DB_HOST or "localhost",
+    "port": settings.DB_PORT or 3306,
+    "name": settings.DB_NAME or "demo_db",
+}
 
-
-db_config = get_db_credentials()
 database_url = (
     f"mysql+pymysql://{db_config['user']}:{db_config['password']}"
     f"@{db_config['host']}:{db_config['port']}/{db_config['name']}"
