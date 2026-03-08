@@ -288,8 +288,7 @@ jobs:
 
       - name: Run Smoke Test
         run: |
-          ALB_URL=$(kubectl get service frontend -n demo-namespace \
-            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          ALB_URL=$(kubectl get ingress demo-ingress -n demo-namespace -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
           echo "Testing ALB: $ALB_URL"
           curl -f --retry 5 --retry-delay 10 http://$ALB_URL/health || exit 1
           curl -f --retry 5 --retry-delay 10 http://$ALB_URL/api/health || exit 1
