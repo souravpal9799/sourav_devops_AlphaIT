@@ -116,7 +116,6 @@ jobs:
           sed -i "s|<FRONTEND_IMAGE>|$ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG|g" infra/kubernetes/frontend-deployment.yaml
           sed -i "s|<BACKEND_IMAGE>|$ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG|g" infra/kubernetes/backend-deployment.yaml
           
-          grep -r "image:" infra/kubernetes/
           kubectl apply -f infra/kubernetes/namespace.yaml
           kubectl apply -R -f infra/kubernetes/ 
           
@@ -125,5 +124,5 @@ jobs:
 
       - name: Smoke Test
         run: |
-          ALB_URL=$(kubectl get ingress -n demo-namespace demo-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          ALB_URL=$(kubectl get service -n demo-namespace frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
           curl -f http://$ALB_URL/api/health || exit 1
