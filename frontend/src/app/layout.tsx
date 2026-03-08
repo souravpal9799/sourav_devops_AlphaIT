@@ -1,4 +1,6 @@
+import React from 'react'
 import type { Metadata } from 'next'
+import './globals.css'
 
 export const metadata: Metadata = {
   title: 'DevOps demo',
@@ -12,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem' }}>{children}</body>
+      <body>{children}</body>
     </html>
   )
 }

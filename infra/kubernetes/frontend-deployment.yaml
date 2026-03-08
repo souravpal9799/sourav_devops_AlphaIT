@@ -22,7 +22,7 @@ spec:
             - name: NODE_ENV
               value: "production"
             - name: API_URL
-              value: "http://backend"  # internal service URL
+              value: "/api"
           resources:
             requests:
               cpu: 100m
