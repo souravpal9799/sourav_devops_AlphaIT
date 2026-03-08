@@ -71,10 +71,17 @@ After Terraform finishes, update your local kubeconfig:
 aws eks update-kubeconfig --name demo-devops-cluster --region ap-south-1
 ```
 
-Apply the Kubernetes manifests:
-```bash
-# Deploy core components (Namespace, Secrets, Deployments, Services, Ingress)
-kubectl apply -f infra/kubernetes/
+# 1. Apply static manifests
+kubectl apply -f infra/kubernetes/namespace.yaml
+kubectl apply -f infra/kubernetes/service.yaml
+kubectl apply -f infra/kubernetes/ingress.yaml
+
+# 2. Inject image names and deploy applications
+export BACKEND_IMAGE="your-account-id.dkr.ecr.ap-south-1.amazonaws.com/backend-app:latest"
+export FRONTEND_IMAGE="your-account-id.dkr.ecr.ap-south-1.amazonaws.com/frontend-app:latest"
+
+envsubst < infra/kubernetes/backend-deployment.yaml | kubectl apply -f -
+envsubst < infra/kubernetes/frontend-deployment.yaml | kubectl apply -f -
 ```
 
 #### C. Cleanup (Destroy)
