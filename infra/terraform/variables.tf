@@ -7,3 +7,8 @@ variable "project_name" {
   type    = string
   default = "demo-devops"
 }
+
+variable "environment" {
+  type    = string
+  default = "production"
+}

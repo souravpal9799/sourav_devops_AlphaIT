@@ -27,6 +27,7 @@ htmlcov/
 **/*.tfstate
 **/*.tfstate.*
 **/*tfstate.backup
+**/*backend-config.hcl
 
 # IDE
 .vscode/

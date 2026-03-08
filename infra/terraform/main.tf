@@ -1,3 +1,10 @@
+# Create S3 bucket and DynamoDB table for Terraform state
+module "tf_state" {
+  source       = "./modules/tf-state"
+  project_name = var.project_name
+  environment  = var.environment
+}
+
 module "vpc" {
   source       = "./modules/vpc"
   project_name = var.project_name

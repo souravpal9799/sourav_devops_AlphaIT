@@ -135,8 +135,14 @@ jobs:
         with:
           terraform_version: '1.7.0'
 
-      - name: Terraform Init
-        run: terraform init -input=false
+      - name: Auto-generate S3 Backend Config
+        run: |
+          echo "🔧 Generating backend configuration with AWS account ID..."
+          bash setup-backend.sh
+          echo "✅ Backend configuration generated"
+
+      - name: Terraform Init with S3 Backend
+        run: terraform init -backend-config=backend-config.hcl -input=false
 
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
