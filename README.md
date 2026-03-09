@@ -4,10 +4,11 @@ A production-ready DevOps MVP project on AWS. This repository provisions infrast
 
 ---
 
-## 📝 Submission Note
+## Submission Note
 
-*   **Frontend URL (ALB endpoint):** [http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com](http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com)
-*   **Backend health URL (/health):** [http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com/api/health](http://k8s-demoname-demoingr-05ef6cf45a-798694407.ap-south-1.elb.amazonaws.com/api/health)
+*   **Access Endpoints:** Both **Frontend** and **Backend** URLs are dynamically generated. To view them:
+    *   **CI/CD:** Check the `Terraform Apply` step in the GitHub Actions workflow logs.
+    *   **Locally:** Run `terraform output` from the `infra/terraform` directory.
 *   **CI/CD used:** GitHub Actions (Automated: Triggers on every push/commit to the `main` branch).
 *   **How backend connects to RDS:** The FastAPI application uses **IAM Roles for Service Accounts (IRSA)** to securely retrieve database credentials from **AWS Secrets Manager** at runtime.
 *   **CloudWatch dashboard:** `demo-devops-dashboard` (Provides metrics for EKS Node CPU/Memory and RDS Performance).
@@ -19,7 +20,7 @@ A production-ready DevOps MVP project on AWS. This repository provisions infrast
 
 ---
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 The system architecture follows AWS best practices for security, scalability, and high availability:
 
@@ -32,9 +33,9 @@ The system architecture follows AWS best practices for security, scalability, an
 
 ---
 
-## 🚀 Deploying in a new AWS account (Alpha)
+## Deploying in a new AWS account (Alpha)
 
-### 📋 Prerequisites
+### Prerequisites
 Before you begin, ensure you have the following installed and configured:
 *   [AWS CLI](https://aws.amazon.com/cli/) (authenticated with your target account)
 *   [Terraform](https://www.terraform.io/downloads.html) (>= 1.0)
@@ -76,12 +77,20 @@ If using the provided GitHub Actions pipeline, set the following **Secrets** in 
 #### A. Infrastructure Provisioning (Terraform)
 ```bash
 cd infra/terraform
-# Generate remote backend configuration (S3 + DynamoDB)
+
+# 1. Initialize AWS Backend (S3 Bucket + DynamoDB Table)
+# This script creates the S3 bucket and DynamoDB lock table via AWS CLI
+# to avoid circular dependencies in Terraform.
 bash setup-backend.sh 
-terraform init -backend-config=backend-config.hcl
+
+# 2. Deploy Infrastructure
+terraform init -backend-config=backend-config.hcl -lock=false
 terraform plan
-terraform apply --auto-approve
+terraform apply --auto-approve -lock=false
 ```
+
+> [!TIP]
+> After `terraform apply` finishes, the **Frontend** and **Backend URLs** (Public DNS) will be automatically displayed in the Terraform outputs. If running via GitHub Actions, check the `Terraform Apply` step in the workflow logs for these endpoints.
 
 #### B. Kubernetes Configuration & Deployment
 After Terraform finishes, update your local kubeconfig:
@@ -91,22 +100,27 @@ aws eks update-kubeconfig --name demo-devops-cluster --region ap-south-1
 ```
 
 ```bash
-# 1. Apply static manifests
-kubectl apply -f infra/kubernetes/namespace.yaml
-kubectl apply -f infra/kubernetes/service.yaml
-kubectl apply -f infra/kubernetes/ingress.yaml
+# 1. Fetch the dynamic RDS Secret name from Terraform outputs
+export RDS_SECRET_NAME=$(terraform output -raw rds_secret_name)
 
-# 2. Inject image names and deploy applications
+# 2. Apply Kubernetes Manifests (Injecting variables)
 export BACKEND_IMAGE="your-account-id.dkr.ecr.ap-south-1.amazonaws.com/backend-app:latest"
 export FRONTEND_IMAGE="your-account-id.dkr.ecr.ap-south-1.amazonaws.com/frontend-app:latest"
 
+kubectl apply -f infra/kubernetes/namespace.yaml
+kubectl apply -f infra/kubernetes/service.yaml
+kubectl apply -f infra/kubernetes/cluster-secret-store.yaml
+
+# Use envsubst to inject secret names and images
+envsubst < infra/kubernetes/external-secret.yaml | kubectl apply -f -
 envsubst < infra/kubernetes/backend-deployment.yaml | kubectl apply -f -
 envsubst < infra/kubernetes/frontend-deployment.yaml | kubectl apply -f -
+kubectl apply -f infra/kubernetes/ingress.yaml
 ```
 
 ---
 
-## 🔍 Verification & Observability
+## Verification & Observability
 
 ### 1. Verification Steps
 *   **Health Checks**: Access `http://<ALB_URL>/health` and `http://<ALB_URL>/api/health`.
@@ -121,7 +135,7 @@ The project provisions a comprehensive dashboard (`demo-devops-dashboard`) conta
 
 ---
 
-## 📖 Runbook & Troubleshooting
+## Runbook & Troubleshooting
 
 ### 1. Where to check logs
 *   **Pod Logs**: `kubectl logs -l app=backend -n demo-namespace` or `kubectl logs -l app=frontend -n demo-namespace`.
@@ -141,13 +155,13 @@ If the ALB Target Group shows targets as "Unhealthy":
 
 ---
 
-## 🧹 Cleanup (Destroy)
+## Cleanup (Destroy)
 To tear down the entire environment and avoid AWS costs:
 ```bash
-# 1. Remove Kubernetes resources first to clean up the ALB
-kubectl delete -f infra/kubernetes/
-
-# 2. Destroy infrastructure
 cd infra/terraform
-terraform destroy --auto-approve
+
+# Run the automated cleanup script
+# This script force-deletes hung K8s namespaces and cleans up orphaned ALBs
+# before running terraform destroy to ensure a clean teardown.
+bash cleanup.sh
 ```

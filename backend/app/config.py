@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # if they are found in the environment variables,
     # or if they are defined inside a `.env` file.
     AWS_REGION: str = "ap-south-1"
-    SECRET_NAME: str = "rds-db-creds2"
+    SECRET_NAME: str = "" # Populated by environment variable if needed
 
     DB_HOST: str = ""
     DB_PORT: int = 3306
