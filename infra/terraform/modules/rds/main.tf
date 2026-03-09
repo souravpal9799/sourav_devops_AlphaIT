@@ -1,10 +1,14 @@
+resource "random_id" "secret_suffix" {
+  byte_length = 4
+}
+
 resource "random_password" "db_password" {
   length  = 16
   special = false
 }
 
 resource "aws_secretsmanager_secret" "db_credentials" {
-  name = "rds-db-creds2"
+  name = "${var.project_name}-rds-db-creds-${random_id.secret_suffix.hex}"
 }
 
 resource "aws_db_subnet_group" "default" {
