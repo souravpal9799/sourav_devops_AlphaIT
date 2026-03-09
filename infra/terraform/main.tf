@@ -90,3 +90,10 @@ resource "kubernetes_namespace" "app_namespace" {
   }
 }
 
+data "kubernetes_ingress_v1" "main" {
+  metadata {
+    name      = "demo-ingress"
+    namespace = kubernetes_namespace.app_namespace.metadata[0].name
+  }
+}
+
