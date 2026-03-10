@@ -73,39 +73,7 @@ jobs:
           echo "Backend configuration generated"
 
       - name: Terraform Init with S3 Backend
-        run: |
-          echo "Attempting Terraform Init..."
-          # Capture output to a file so we can scan it for specific errors
-          if ! terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false > init_output.txt 2>&1; then
-            cat init_output.txt
-            
-            # Extract variables from config
-            TABLE_NAME=$(grep "dynamodb_table" backend-config.hcl | cut -d'"' -f2)
-            BUCKET_NAME=$(grep "bucket" backend-config.hcl | cut -d'"' -f2)
-            KEY_NAME=$(grep "key" backend-config.hcl | cut -d'"' -f2)
-            
-            if grep -q "checksum" init_output.txt; then
-              echo "[CRITICAL] Checksum mismatch detected between S3 and DynamoDB."
-              echo "Performing full state reset for a fresh start..."
-              
-              echo "[INFO] Deleting stale lock/digest from DynamoDB: $TABLE_NAME"
-              aws dynamodb delete-item \
-                --table-name "$TABLE_NAME" \
-                --key "{\"LockID\": {\"S\": \"$BUCKET_NAME/$KEY_NAME\"}}" \
-                --region ${{ env.AWS_REGION }} || true
-              
-              echo "[INFO] Deleting out-of-sync state file from S3: s3://$BUCKET_NAME/$KEY_NAME"
-              aws s3 rm "s3://$BUCKET_NAME/$KEY_NAME" --region ${{ env.AWS_REGION }} || true
-              
-              echo "Retrying Terraform Init (Fresh Start)..."
-              terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false
-            else
-              echo "[ERROR] Terraform init failed with an unknown error. See logs above."
-              exit 1
-            fi
-          else
-            echo "Terraform Init Successful"
-          fi
+        run: terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false
 
       - name: Terraform Plan
         run: |
@@ -134,7 +102,7 @@ jobs:
 # ==============================================================
   lint-and-build:
     name: Lint, Build & Push
-    needs: terraform-deploy
+    needs: k8s-approval
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -189,7 +157,6 @@ jobs:
     needs:
       - k8s-approval
       - lint-and-build
-      - terraform-deploy
     runs-on: ubuntu-latest
     if: |
       always() &&

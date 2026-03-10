@@ -86,7 +86,7 @@ bucket         = "$BUCKET_NAME"
 key            = "$STATE_KEY"
 region         = "$REGION"
 encrypt        = true
-dynamodb_table = "$DYNAMODB_TABLE"
+#dynamodb_table = "$DYNAMODB_TABLE"
 EOF
 
 echo "[OK] Created backend-config.hcl"
