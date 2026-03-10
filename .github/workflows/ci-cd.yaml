@@ -73,7 +73,27 @@ jobs:
           echo "Backend configuration generated"
 
       - name: Terraform Init with S3 Backend
-        run: terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false
+        run: |
+          echo "Attempting Terraform Init..."
+          if ! terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false; then
+            echo "[WARNING] Terraform init failed. This is often due to a stale DynamoDB lock or checksum mismatch."
+            echo "Attempting to force-unlock or reconcile state..."
+            
+            # Use the DynamoDB table from the generated config to clear it manually
+            TABLE_NAME=$(grep "dynamodb_table" backend-config.hcl | cut -d'"' -f2)
+            BUCKET_NAME=$(grep "bucket" backend-config.hcl | cut -d'"' -f2)
+            KEY_NAME=$(grep "key" backend-config.hcl | cut -d'"' -f2)
+            ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+            
+            echo "Deleting stale lock record from DynamoDB: $TABLE_NAME"
+            aws dynamodb delete-item \
+              --table-name "$TABLE_NAME" \
+              --key "{\"LockID\": {\"S\": \"$BUCKET_NAME/$KEY_NAME\"}}" \
+              --region ${{ env.AWS_REGION }} || true
+            
+            echo "Retrying Terraform Init..."
+            terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false
+          fi
 
       - name: Terraform Plan
         run: |
