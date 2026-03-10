@@ -1,5 +1,5 @@
 terraform {
   backend "s3" {
-    # Configure with: terraform init -backend-config=backend-config.hcl
+    # Configuration is passed via -backend-config or generated backend-config.hcl
   }
 }
