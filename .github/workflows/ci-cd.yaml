@@ -153,12 +153,26 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG
 
+      - name: Trivy Scan Frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND }}:${{ env.IMAGE_TAG }}'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy Scan Backend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:${{ env.IMAGE_TAG }}'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
 # ==============================================================
 # STAGE 3 - Kubernetes Deploy
 # ==============================================================
   k8s-deploy:
     name: Deploy to EKS
-    needs: lint-and-build
+    needs: [lint-and-build, terraform-deploy]
     runs-on: ubuntu-latest
     if: |
       always() &&
@@ -173,12 +187,26 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.7.0'
+
       - name: Update KubeConfig
         run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Fetch Actual RDS Secret Name from Terraform
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          bash setup-backend.sh
+          terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false
+          SECRET_NAME=$(terraform output -raw rds_secret_name)
+          echo "REAL_RDS_SECRET_NAME=$SECRET_NAME" >> $GITHUB_ENV
+          echo "Found Secret: $SECRET_NAME"
 
       - name: Apply Kubernetes Manifests
         run: |
@@ -187,11 +215,11 @@ jobs:
           kubectl apply -f infra/kubernetes/ingress.yaml
 
       - name: Apply External Secrets Manifests
-        env:
-          RDS_SECRET_NAME: ${{ needs.terraform-deploy.outputs.rds_secret_name }}
         run: |
           kubectl apply -f infra/kubernetes/cluster-secret-store.yaml
-          envsubst < infra/kubernetes/external-secret.yaml | kubectl apply -f -
+          # Use sed to replace the placeholder with the actual secret name
+          sed -i "s/\$RDS_SECRET_NAME/$REAL_RDS_SECRET_NAME/g" infra/kubernetes/external-secret.yaml
+          kubectl apply -f infra/kubernetes/external-secret.yaml
 
       - name: Deploy Application
         env:
