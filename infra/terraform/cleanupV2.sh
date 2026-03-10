@@ -16,8 +16,12 @@ fi
 done
 
 # 2. Get Terraform Outputs
-CLUSTER_NAME=$(terraform output -raw eks_cluster_name 2>/dev/null || echo "demo-devops-cluster")
-REGION=$(terraform output -raw aws_region 2>/dev/null || echo "ap-south-1")
+# Try to get outputs, but don't capture the warning messages into the variables
+RAW_CLUSTER=$(terraform output -raw eks_cluster_name 2>/dev/null || echo "")
+RAW_REGION=$(terraform output -raw aws_region 2>/dev/null || echo "")
+
+CLUSTER_NAME=${RAW_CLUSTER:-"demo-devops-cluster"}
+REGION=${RAW_REGION:-"ap-south-1"}
 
 echo "[INFO] Target Cluster: $CLUSTER_NAME"
 echo "[INFO] Region: $REGION"
@@ -25,9 +29,9 @@ echo "[INFO] Region: $REGION"
 # 3. Update kubeconfig
 echo "[INFO] Updating kubeconfig..."
 
-aws eks update-kubeconfig 
---name "$CLUSTER_NAME" 
---region "$REGION" || true
+aws eks update-kubeconfig \
+  --name "$CLUSTER_NAME" \
+  --region "$REGION" || true
 
 # 4. Delete Kubernetes Workloads
 echo "[INFO] Deleting Kubernetes workloads..."
@@ -41,30 +45,23 @@ kubectl delete deploy --all -A --timeout=30s 2>/dev/null || true
 echo "[INFO] Force deleting pods..."
 
 for ns in demo-namespace external-secrets; do
-kubectl delete pod --all 
--n "$ns" 
---force 
---grace-period=0 
-2>/dev/null || true
+  kubectl delete pod --all \
+    -n "$ns" \
+    --force \
+    --grace-period=0 \
+    2>/dev/null || true
 done
 
 # 6. Remove Namespace Finalizers
-echo "[INFO] Removing namespace finalizers..."
+echo "[INFO] Removing namespace finalizers to unstick namespaces..."
 
 for ns in demo-namespace external-secrets; do
-if kubectl get ns "$ns" >/dev/null 2>&1; then
-kubectl get namespace "$ns" -o json 
-| jq '.metadata.finalizers = []' 
-> ns_patch.json
-
-```
-kubectl replace --raw "/api/v1/namespaces/$ns/finalize" \
-  -f ns_patch.json 2>/dev/null || true
-
-rm -f ns_patch.json
-```
-
-fi
+  if kubectl get ns "$ns" >/dev/null 2>&1; then
+    echo "[INFO] Forcing cleanup of namespace: $ns"
+    kubectl get namespace "$ns" -o json | \
+      jq '.spec.finalizers = [] | .metadata.finalizers = []' | \
+      kubectl replace --raw "/api/v1/namespaces/$ns/finalize" -f - || true
+  fi
 done
 
 # 7. Terraform Destroy

@@ -104,10 +104,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment:
-      name: terraform-approval    # (arrow removed) Create in repo Settings -> Environments -> Required reviewers
+      name: terraform-approval
     steps:
       - name: Approval gate passed
-        run: echo "OK: Terraform deployment approved."
+        run: echo "OK - Terraform deployment approved."
 
 # --------------------------------------------------------------
 # STAGE 2 - Terraform Plan & Apply
@@ -187,10 +187,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment:
-      name: k8s-approval          # Create in repo Settings -> Environments -> Required reviewers
+      name: k8s-approval
     steps:
       - name: Approval gate passed
-        run: echo "OK: Kubernetes deployment approved."
+        run: echo "OK - Kubernetes deployment approved."
 
 # --------------------------------------------------------------
 # STAGE 3 - Kubernetes Deploy (ESO manifests + App Deployment)
