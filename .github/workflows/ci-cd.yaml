@@ -144,7 +144,7 @@ jobs:
           echo "Backend configuration generated"
 
       - name: Terraform Init with S3 Backend
-        run: terraform init -backend-config=backend-config.hcl -input=false -lock=false
+        run: terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false
 
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
