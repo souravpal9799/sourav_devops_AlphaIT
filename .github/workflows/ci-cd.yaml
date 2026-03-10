@@ -87,7 +87,7 @@ jobs:
 
       - name: Terraform Apply
         run: |
-          terraform apply --auto-approve -input=false tfplan -lock=false
+          terraform apply -input=false -lock=false tfplan
         env:
           TF_IN_AUTOMATION: true
 
@@ -102,10 +102,11 @@ jobs:
 # ==============================================================
   lint-and-build:
     name: Lint, Build & Push
-    needs: [terraform-approval, k8s-approval]
+    needs: [terraform-deploy, k8s-approval]
     if: |
       always() && 
-      (needs.terraform-approval.result == 'success' || needs.k8s-approval.result == 'success')
+      (needs.terraform-deploy.result == 'success' || needs.terraform-deploy.result == 'skipped' || needs.terraform-deploy.result == 'cancelled') && 
+      needs.k8s-approval.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -157,13 +158,10 @@ jobs:
 # ==============================================================
   k8s-deploy:
     name: Deploy to EKS
-    needs:
-      - k8s-approval
-      - lint-and-build
+    needs: lint-and-build
     runs-on: ubuntu-latest
     if: |
       always() &&
-      needs.k8s-approval.result == 'success' &&
       needs.lint-and-build.result == 'success'
     steps:
       - uses: actions/checkout@v3
