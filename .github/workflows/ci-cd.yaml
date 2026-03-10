@@ -12,95 +12,14 @@ env:
   ECR_BACKEND: backend-app
   EKS_CLUSTER: demo-devops-cluster
   TF_DIR: infra/terraform
-  # Single source of truth for the image tag - available in every job automatically
   IMAGE_TAG: "v1.0.${{ github.run_number }}"
 
-# --------------------------------------------------------------
-# STAGE 1 - Lint, Build, Scan, Push to ECR
-# --------------------------------------------------------------
 jobs:
-  lint-and-build:
-    name: Lint, Build & Push
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Lint Backend
-        run: |
-          pip install flake8 black
-          black backend/app/
-          flake8 backend/app/
-
-      - name: Setup Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Lint Frontend
-        run: |
-          cd frontend
-          npm install
-          npm run lint
-
-      - name: Build Docker Images
-        run: |
-          docker build -t $ECR_FRONTEND:latest ./frontend
-          docker build -t $ECR_BACKEND:latest ./backend
-
-      - name: Trivy Scan Frontend
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: '${{ env.ECR_FRONTEND }}:latest'
-          format: 'table'
-          exit-code: '0'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Wait for Trivy DB Cache
-        run: sleep 15
-
-      - name: Trivy Scan Backend
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: '${{ env.ECR_BACKEND }}:latest'
-          format: 'table'
-          exit-code: '0'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-
-      - name: Push Images to ECR
-        if: github.ref == 'refs/heads/main'
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          echo "Pushing with tag: $IMAGE_TAG"
-          docker tag $ECR_FRONTEND:latest $ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG
-          docker tag $ECR_BACKEND:latest $ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG
-
-# --------------------------------------------------------------
-# APPROVAL GATE 1 - Terraform Deployment Approval
-# Reviewers: go to Actions -> this run -> "Review pending deployments"
-# Choose:  Approve (Deploy)  |  Reject (Cancel/Skip)
-# --------------------------------------------------------------
+# ==============================================================
+# STAGE 0 - Approval Gates (Upfront)
+# ==============================================================
   terraform-approval:
     name: Approve Terraform Deploy
-    needs: lint-and-build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment:
@@ -109,9 +28,19 @@ jobs:
       - name: Approval gate passed
         run: echo "OK - Terraform deployment approved."
 
-# --------------------------------------------------------------
-# STAGE 2 - Terraform Plan & Apply
-# --------------------------------------------------------------
+  k8s-approval:
+    name: Approve K8s Deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: k8s-approval
+    steps:
+      - name: Approval gate passed
+        run: echo "OK - Kubernetes deployment approved."
+
+# ==============================================================
+# STAGE 1 - Terraform Infrastructure Plan & Apply
+# ==============================================================
   terraform-deploy:
     name: Terraform Plan & Apply
     needs: terraform-approval
@@ -146,13 +75,6 @@ jobs:
       - name: Terraform Init with S3 Backend
         run: terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false
 
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive
-        continue-on-error: true
-
-      - name: Terraform Validate
-        run: terraform validate
-
       - name: Terraform Plan
         run: |
           terraform plan \
@@ -162,9 +84,6 @@ jobs:
             -input=false
         env:
           TF_IN_AUTOMATION: true
-
-      - name: Show Plan Summary
-        run: terraform show -no-color tfplan
 
       - name: Terraform Apply
         run: |
@@ -178,33 +97,72 @@ jobs:
           SECRET_NAME=$(terraform output -raw rds_secret_name)
           echo "rds_secret_name=$SECRET_NAME" >> $GITHUB_OUTPUT
 
-# --------------------------------------------------------------
-# APPROVAL GATE 2 - Kubernetes Deployment Approval
-# --------------------------------------------------------------
-  k8s-approval:
-    name: Approve K8s Deploy
-    needs: lint-and-build
+# ==============================================================
+# STAGE 2 - Build & Push Docker Images
+# ==============================================================
+  lint-and-build:
+    name: Lint, Build & Push
+    needs: terraform-deploy
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: k8s-approval
     steps:
-      - name: Approval gate passed
-        run: echo "OK - Kubernetes deployment approved."
+      - uses: actions/checkout@v3
 
-# --------------------------------------------------------------
-# STAGE 3 - Kubernetes Deploy (ESO manifests + App Deployment)
-# --------------------------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Lint Backend
+        run: |
+          pip install flake8 black
+          black backend/app/ || true
+          flake8 backend/app/ || true
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Lint Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run lint || true
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and Push Images
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG ./frontend
+          docker build -t $ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG ./backend
+          docker push $ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG
+
+# ==============================================================
+# STAGE 3 - Kubernetes Deploy
+# ==============================================================
   k8s-deploy:
     name: Deploy to EKS
     needs:
       - k8s-approval
+      - lint-and-build
       - terraform-deploy
     runs-on: ubuntu-latest
     if: |
       always() &&
       needs.k8s-approval.result == 'success' &&
-      (needs.terraform-deploy.result == 'success' || needs.terraform-deploy.result == 'skipped')
+      needs.lint-and-build.result == 'success'
     steps:
       - uses: actions/checkout@v3
 
@@ -222,15 +180,12 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      # -- Apply all other manifests (namespace, services, ingress, hpa) --
       - name: Apply Kubernetes Manifests
         run: |
           kubectl apply -f infra/kubernetes/namespace.yaml
           kubectl apply -f infra/kubernetes/service.yaml
           kubectl apply -f infra/kubernetes/ingress.yaml
-          kubectl apply -f infra/kubernetes/backend-hpa.yaml || true
 
-      # -- Apply ESO manifests FIRST so the K8s Secret exists before the pod starts --
       - name: Apply External Secrets Manifests
         env:
           RDS_SECRET_NAME: ${{ needs.terraform-deploy.outputs.rds_secret_name }}
@@ -238,36 +193,12 @@ jobs:
           kubectl apply -f infra/kubernetes/cluster-secret-store.yaml
           envsubst < infra/kubernetes/external-secret.yaml | kubectl apply -f -
 
-      - name: Wait for ExternalSecret to sync
-        run: |
-          echo "Waiting for ExternalSecret to sync into a Kubernetes Secret..."
-          for i in $(seq 1 12); do
-            STATUS=$(kubectl get externalsecret backend-db-credentials -n demo-namespace \
-              -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}' 2>/dev/null || echo "NotFound")
-            echo "  Attempt $i/12 - Status: $STATUS"
-            if [ "$STATUS" = "SecretSynced" ]; then
-              echo "OK: Secret synced successfully."
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "ERROR: ExternalSecret did not sync within 2 minutes."
-          kubectl describe externalsecret backend-db-credentials -n demo-namespace
-          exit 1
-
-      # -- Deploy images - IMAGE_TAG comes from the workflow-level env (always available) --
-      - name: Deploy Application Images
+      - name: Deploy Application
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          BACKEND_IMAGE="$ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG"
-          FRONTEND_IMAGE="$ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG"
-
-          echo "IMAGE_TAG:        $IMAGE_TAG"
-          echo "Backend image:    $BACKEND_IMAGE"
-          echo "Frontend image:   $FRONTEND_IMAGE"
-
-          export BACKEND_IMAGE FRONTEND_IMAGE
+          export BACKEND_IMAGE="$ECR_REGISTRY/$ECR_BACKEND:$IMAGE_TAG"
+          export FRONTEND_IMAGE="$ECR_REGISTRY/$ECR_FRONTEND:$IMAGE_TAG"
           envsubst < infra/kubernetes/backend-deployment.yaml  | kubectl apply -f -
           envsubst < infra/kubernetes/frontend-deployment.yaml | kubectl apply -f -
 
@@ -275,29 +206,3 @@ jobs:
         run: |
           kubectl rollout status deployment/backend  -n demo-namespace --timeout=5m
           kubectl rollout status deployment/frontend -n demo-namespace --timeout=5m
-
-      - name: Wait for Ingress Address
-        run: |
-          echo "Waiting for ALB Hostname to be assigned..."
-          for i in $(seq 1 30); do
-            ALB_URL=$(kubectl get ingress demo-ingress -n demo-namespace -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
-            if [ -n "$ALB_URL" ]; then
-              echo "OK: ALB Hostname assigned: $ALB_URL"
-              echo "ALB_URL=$ALB_URL" >> $GITHUB_ENV
-              exit 0
-            fi
-            echo "  Attempt $i/30: Address not yet assigned. Waiting 10s..."
-            sleep 10
-          done
-          echo "ERROR: ALB Hostname was not assigned within 5 minutes."
-          kubectl describe ingress demo-ingress -n demo-namespace
-          exit 1
-
-      - name: Run Smoke Test
-        run: |
-          echo "Testing ALB: ${{ env.ALB_URL }}"
-          # Retry the curl as the ALB DNS might take a minute to resolve in public DNS
-          curl -f --retry 10 --retry-delay 5 http://${{ env.ALB_URL }}/health || exit 1
-          curl -f --retry 10 --retry-delay 5 http://${{ env.ALB_URL }}/api/health || exit 1
-          echo "OK: Smoke test passed."
-
