@@ -234,3 +234,22 @@ jobs:
         run: |
           kubectl rollout status deployment/backend  -n demo-namespace --timeout=5m
           kubectl rollout status deployment/frontend -n demo-namespace --timeout=5m
+
+      - name: Get Application Endpoints
+        run: |
+          echo "Waiting for LoadBalancer DNS name..."
+          for i in {1..30}; do
+            ALB_HOST=$(kubectl get ingress demo-ingress -n demo-namespace -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            if [ -n "$ALB_HOST" ]; then
+              echo "============================================================"
+              echo "[SUCCESS] DEPLOYMENT COMPLETE"
+              echo "Frontend URL: http://$ALB_HOST"
+              echo "Backend API:  http://$ALB_HOST/api/health"
+              echo "============================================================"
+              exit 0
+            fi
+            echo "Still waiting for address... ($i/30)"
+            sleep 10
+          done
+          echo "[ERROR] LoadBalancer DNS name not found after 5 minutes."
+          exit 1
