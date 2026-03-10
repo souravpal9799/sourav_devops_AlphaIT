@@ -75,24 +75,36 @@ jobs:
       - name: Terraform Init with S3 Backend
         run: |
           echo "Attempting Terraform Init..."
-          if ! terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false; then
-            echo "[WARNING] Terraform init failed. This is often due to a stale DynamoDB lock or checksum mismatch."
-            echo "Attempting to force-unlock or reconcile state..."
+          # Capture output to a file so we can scan it for specific errors
+          if ! terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false > init_output.txt 2>&1; then
+            cat init_output.txt
             
-            # Use the DynamoDB table from the generated config to clear it manually
+            # Extract variables from config
             TABLE_NAME=$(grep "dynamodb_table" backend-config.hcl | cut -d'"' -f2)
             BUCKET_NAME=$(grep "bucket" backend-config.hcl | cut -d'"' -f2)
             KEY_NAME=$(grep "key" backend-config.hcl | cut -d'"' -f2)
-            ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
             
-            echo "Deleting stale lock record from DynamoDB: $TABLE_NAME"
-            aws dynamodb delete-item \
-              --table-name "$TABLE_NAME" \
-              --key "{\"LockID\": {\"S\": \"$BUCKET_NAME/$KEY_NAME\"}}" \
-              --region ${{ env.AWS_REGION }} || true
-            
-            echo "Retrying Terraform Init..."
-            terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false
+            if grep -q "checksum" init_output.txt; then
+              echo "[CRITICAL] Checksum mismatch detected between S3 and DynamoDB."
+              echo "Performing full state reset for a fresh start..."
+              
+              echo "[INFO] Deleting stale lock/digest from DynamoDB: $TABLE_NAME"
+              aws dynamodb delete-item \
+                --table-name "$TABLE_NAME" \
+                --key "{\"LockID\": {\"S\": \"$BUCKET_NAME/$KEY_NAME\"}}" \
+                --region ${{ env.AWS_REGION }} || true
+              
+              echo "[INFO] Deleting out-of-sync state file from S3: s3://$BUCKET_NAME/$KEY_NAME"
+              aws s3 rm "s3://$BUCKET_NAME/$KEY_NAME" --region ${{ env.AWS_REGION }} || true
+              
+              echo "Retrying Terraform Init (Fresh Start)..."
+              terraform init -reconfigure -backend-config=backend-config.hcl -input=false -lock=false
+            else
+              echo "[ERROR] Terraform init failed with an unknown error. See logs above."
+              exit 1
+            fi
+          else
+            echo "Terraform Init Successful"
           fi
 
       - name: Terraform Plan
